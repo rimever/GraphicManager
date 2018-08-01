@@ -1,0 +1,214 @@
+10:38 2007/08/07	Graphic Manager
+　色々使えるかと思って製作開始。
+
+13:16 2007/08/04「安全でないコード」が本当にほしくなる事例
+http://www.atmarkit.co.jp/fdotnet/csharp_abc2/csabc2_021/cs2_021_04.html
+
+　以下は、「安全でないコード」が本当にほしくなる事例として作成したものである。24ビットのBMPファイルを読み込んで、ネガ反転処理を行うものである。まず、.NET Frameworkのクラス・ライブラリを活用した正統派のソースList 21-9を見ていただこう。
+
+  1: using System;
+  2: using System.IO;
+  3: using System.Drawing;
+  4: 
+  5: namespace Sample009
+  6: {
+  7:   using System.IO;
+  8:   using System.Drawing;
+  9:   class Class1
+ 10:   {
+ 11:     private static void NegativeBMP( string inputFileName, string outputFileName )
+ 12:     {
+ 13:       Bitmap bitmap = new Bitmap( inputFileName );
+ 14:       for( int y=0; y<bitmap.PhysicalDimension.Height; y++ )
+ 15:       {
+ 16:         for( int x=0; x<bitmap.PhysicalDimension.Width; x++ )
+ 17:         {
+ 18:           Color c = bitmap.GetPixel( x, y );
+ 19:           bitmap.SetPixel( x, y, Color.FromArgb((byte)~c.R, (byte)~c.G,(byte)~c.B) );
+ 20:         }
+ 21:       }
+ 22:       bitmap.Save( outputFileName );
+ 23:     }
+ 24:     [STAThread]
+ 25:     static void Main(string[] args)
+ 26:     {
+ 27:       DateTime start = DateTime.Now;
+ 28:       const string inputFileName = "c:\\test1.bmp";
+ 29:       const string outputFileName = "c:\\test2.bmp";
+ 30:       NegativeBMP( inputFileName, outputFileName );
+ 31:       DateTime end = DateTime.Now;
+ 32:       Console.WriteLine( end-start );
+ 33:     }
+ 34:   }
+ 35: }
+ 
+ 
+List 21-9 
+
+　次に、「安全でないコード」を用いた例、List 21-10を見ていただこう。
+
+  1: using System;
+  2: using System.IO;
+  3: using System.Runtime.InteropServices;
+  4: 
+  5: namespace Sample010
+  6: {
+  7:   [StructLayout(LayoutKind.Sequential,Pack=1)]
+  8:   struct BITMAPFILEHEADER
+  9:   {
+ 10:     public ushort   bfType;
+ 11:     public uint bfSize;
+ 12:     public ushort   bfReserved1;
+ 13:     public ushort   bfReserved2;
+ 14:     public uint bfOffBits;
+ 15:   }
+ 16:   [StructLayout(LayoutKind.Sequential,Pack=1)]
+ 17:   struct BITMAPINFOHEADER
+ 18:   {
+ 19:     public uint biSize;
+ 20:     public int  biWidth;
+ 21:     public int  biHeight;
+ 22:     public ushort   biPlanes;
+ 23:     public ushort   biBitCount;
+ 24:     public uint biCompression;
+ 25:     public uint biSizeImage;
+ 26:     public int  biXPelsPerMeter;
+ 27:     public int  biYPelsPerMeter;
+ 28:     public uint biClrUsed;
+ 29:     public uint biClrImportant;
+ 30:     public const int BI_RGB = 0;
+ 31:   };
+ 32: 
+ 33:   class Class1
+ 34:   {
+ 35:     unsafe private static void NegativeBMP( string inputFileName, string outputFileName )
+ 36:     {
+ 37:       FileStream inputFile = new FileStream(inputFileName,FileMode.  Open);
+ 38:       byte [] fileImage = new byte[inputFile.Length];
+ 39:       inputFile.Read(fileImage,0,(int)inputFile.Length);
+ 40:       inputFile.Close();
+ 41: 
+ 42:       fixed( byte * basePtr = &fileImage[0] )
+ 43:       {
+ 44:         BITMAPFILEHEADER * bitmapFileHeader = (BITMAPFILEHEADER *)basePtr;
+ 45:         BITMAPINFOHEADER * bitmapInfoHeader = (BITMAPINFOHEADER * )(basePtr + sizeof(BITMAPFILEHEADER));
+ 46:         byte * bits = basePtr + bitmapFileHeader->bfOffBits;
+ 47:         if( bitmapInfoHeader->biBitCount != 24 || bitmapInfoHeader->biCompression != BITMAPINFOHEADER.BI_RGB )
+ 48:         {
+ 49:           Console.WriteLine( "Error: 24bit RGB Bitmap Only");
+ 50:           return;
+ 51:         }
+ 52:         int bytesInLine = (bitmapInfoHeader->biWidth+3)/4*4;
+ 53:         int totalBytes = bytesInLine * bitmapInfoHeader->biHeight * 3;
+ 54:         for( int i = 0; i<totalBytes; i++ )
+ 55:         {
+ 56:           *bits = (byte)~*bits;
+ 57:           bits++;
+ 58:         }
+ 59:       }
+ 60: 
+ 61:       FileStream outputFile = new FileStream(outputFileName,FileMode.Create);
+ 62:       outputFile.Write(fileImage,0,fileImage.Length);
+ 63:       outputFile.Close();
+ 64:     }
+ 65:     [STAThread]
+ 66:     static void Main(string[] args)
+ 67:     {
+ 68:       DateTime start = DateTime.Now;
+ 69:       const string inputFileName = "c:\\test1.bmp";
+ 70:       const string outputFileName = "c:\\test2.bmp";
+ 71:       NegativeBMP( inputFileName, outputFileName );
+ 72:       DateTime end = DateTime.Now;
+ 73:       Console.WriteLine( end-start );
+ 74:     }
+ 75:   }
+ 76: }
+ 
+ 
+List 21-10 
+
+　List 21-9とList 21-10のどちらを実行しても、Fig.21-10の画像をFig.21-11のように加工する。どちらも同じ結果になる。
+
+ 
+Fig.21-10 
+　
+ 
+Fig.21-11 
+
+　さて、ソースを見比べれば、正統派の方がずっと短く読みやすいことが分かるだろう。しかも、正統派のソースは、24ビットBMPに制限されず、Bitmapクラスがサポートするあらゆるデータ型を扱える。それにもかかわらず、「安全でないコード」がほしくなる理由は、圧倒的な性能差にある。Pentium 4／1.5GHzのマシンでの処理に、正統派のコードは23秒を必要としたが、「安全でないコード」版の方は0.4秒ほどで済んだ。Fig.21-12は、サンプル・ソースを実行した所要時間を示している。上が正統派のソースの場合で、下が「安全でないコード」を使用したソースの場合である。
+
+ 
+Fig.21-12 
+
+　もちろん、ここで取り上げた正統派のソースはあまりにも愚直すぎるので、「安全でないコード」を使わなくても、低レベルの処理に置き換えることでかなりの高速化を行うことは可能だ。例えば、byte配列で一気に反転処理を行えば、性能面で大差ないコードを書くこともできるだろう。しかし、このような単純な処理で済まない場合、型を持ったポインタを使用できる「安全でないコード」の方が、よりエレガントに問題を解決できるだろう。
+
+※指定の構造体が理解できず使っていない。byte配列で一気に反転処理というのもどうすればいいのかわからない。
+
+10:38 2007/08/07　指定した範囲のコピー
+http://www.geocities.jp/mnow/cs_bitmap1.html
+指定した Format32bppArgb 形式のビットマップの指定した範囲のコピーを作成します。
+プロジェクト-プロジェクト名のプロパティ-構成プロパティ-ビルドの
+セーフモード以外のコードブロックの許可をtrueにする必要があります。
+
+/// <summary>
+/// 指定した Format32bppArgb 形式のビットマップの指定した範囲のコピーを作成します。
+/// </summary>
+/// <remarks>
+/// プロジェクト-プロジェクト名のプロパティ-構成プロパティ-ビルドの
+/// セーフモード以外のコードブロックの許可をtrueにする必要があります。
+/// 
+/// rectSrc が bitmapSrc の範囲外かのチェックは行っておりません。
+/// </remarks>
+/// <param name="bitmapSrc">Format32bppArgb 形式のビットマップ</param>
+/// <param name="rectSrc">コピー範囲の四角形</param>
+/// <returns>Bitmap コピーしたFormat32bppArgb 形式のビットマップ</returns>
+public Bitmap CopyBitmap( Bitmap bitmapSrc, Rectangle rectSrc )
+{
+       int x, y, ySrc, yDst ;
+       Color color ;
+       Bitmap bitmapDst = new Bitmap( rectSrc.Width, rectSrc.Height ) ;
+       Rectangle rectDst = new Rectangle( 0,0, bitmapDst.Width, bitmapDst.Height ) ;
+       BitmapData bitmapDataSrc = bitmapSrc.LockBits( rectSrc, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb ) ;
+       BitmapData bitmapDataDst = bitmapDst.LockBits( rectDst, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb ) ;
+
+       unsafe
+       {
+               uint * src = (uint *)(void *)bitmapDataSrc.Scan0 ;
+               uint * dst = (uint *)(void *)bitmapDataDst.Scan0 ;
+
+               for( y=0 ; y < rectSrc.Height ; y++ )
+               {
+                      ySrc = y*bitmapDataSrc.Stride/sizeof(uint) ;
+                      yDst = y*bitmapDataDst.Stride/sizeof(uint) ;
+                      for( x=0 ; x < rectSrc.Width ; x++ )
+                      {
+                              color = Color.FromArgb( (int)src[ySrc + x] ) ;
+                              dst[yDst + x] = (uint)color.ToArgb() ;
+                      }
+               }
+       }
+
+       bitmapDst.UnlockBits(bitmapDataDst);
+       bitmapSrc.UnlockBits(bitmapDataSrc);
+       return bitmapDst ;
+}
+※画像処理の基本にもなる処理。unsafeは避けて通れない道のようである。
+
+15:16 2007/08/07
+http://homepage2.nifty.com/tsugu/sotuken/ronbun/sec3-2.html
+セピア調化
+セピアとはイカ墨から作られる黒茶色の絵の具のことで、画像をセピア調にするということは、これで描かれたように見せるということである。 
+この処理には画像の輝度を用いる。輝度はそのままグレイスケール画像であるのでこの処理の対象はグレイスケールとなる。
+セピア調にするには、この輝度に対して適当なパラメータを乗ずることで実現することができる。本研究では RGB 各色成分に対して次の式に示す処理を行った。 
+
+R=Y/255*240
+G=Y/255*200
+B=Y/255*145
+
+※C#ではY/255はColor.GetBrightnessに当たる
+
+21:31 2007/08/11　細線化
+http://codezine.jp/a/article.aspx?aid=98
+上の説明がわかりやすい。
+
+http://www.teu.ac.jp/kougi/hasimoto/ImageProcessing/image/index.htmのHilditchの細線化はまた違うようだが、これはよくわからない。
